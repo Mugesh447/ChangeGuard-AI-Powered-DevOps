@@ -1,0 +1,86 @@
+name: ChangeGuard Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        default: azure
+        type: choice
+        options: [azure, aws]
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - run: node --check server/index.js
+
+  deploy-azure:
+    if: github.event_name == 'push' || inputs.target == 'azure'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/docker-login@v2
+        with:
+          login-server: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
+          username: ${{ secrets.AZURE_ACR_USERNAME }}
+          password: ${{ secrets.AZURE_ACR_PASSWORD }}
+      - run: docker build -t "${{ secrets.AZURE_ACR_LOGIN_SERVER }}/changeguard:${{ github.sha }}" -f Dockerfile .
+      - run: docker push "${{ secrets.AZURE_ACR_LOGIN_SERVER }}/changeguard:${{ github.sha }}"
+      - name: Update API container
+        uses: azure/cli@v2
+        with:
+          inlineScript: >-
+            az containerapp update
+            --name "${{ secrets.AZURE_API_CONTAINER_APP }}"
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"
+            --image "${{ secrets.AZURE_ACR_LOGIN_SERVER }}/changeguard:${{ github.sha }}"
+            --set-env-vars "OPENAI_API_KEY=secretref:openai-api-key" "MCP_SERVER_URL=secretref:mcp-server-url"
+      - name: Deploy frontend container
+        uses: azure/cli@v2
+        with:
+          inlineScript: >-
+            az containerapp update
+            --name "${{ secrets.AZURE_WEB_CONTAINER_APP }}"
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"
+            --image "${{ secrets.AZURE_ACR_LOGIN_SERVER }}/changeguard:${{ github.sha }}"
+
+  deploy-aws:
+    if: github.event_name == 'push' || inputs.target == 'aws'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: docker build -t "${{ secrets.AWS_ECR_REPOSITORY }}:${{ github.sha }}" -f Dockerfile .
+      - run: docker push "${{ secrets.AWS_ECR_REPOSITORY }}:${{ github.sha }}"
+      - name: Update ECS service
+        run: aws ecs update-service --cluster "${{ secrets.AWS_ECS_CLUSTER }}" --service "${{ secrets.AWS_ECS_SERVICE }}" --force-new-deployment
