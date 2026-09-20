@@ -11,49 +11,49 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm ci'
+                bat 'npm ci'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'npm test'
+                bat 'npm test'
             }
         }
 
         stage('Lint') {
             steps {
-                sh 'npm run lint'
+                bat 'npm run lint'
             }
         }
 
         stage('Type Check') {
             steps {
-                sh 'npm run typecheck'
+                bat 'npm run typecheck'
             }
         }
 
         stage('Build Application') {
             steps {
-                sh 'npm run build'
+                bat 'npm run build'
             }
         }
 
         stage('Docker Build') {
             steps {
-                sh 'docker compose build'
+                bat 'docker compose build'
             }
         }
 
         stage('Deploy') {
             steps {
-                sh 'docker compose up -d'
+                bat 'docker compose up -d'
             }
         }
 
         stage('Check Containers') {
             steps {
-                sh 'docker compose ps'
+                bat 'docker compose ps'
             }
         }
     }
@@ -64,11 +64,3 @@ pipeline {
         }
     }
 }
-
-
-
-
-
-
-
-    
