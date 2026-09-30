@@ -74,3 +74,4 @@ nginx.conf          Static hosting and health endpoint
 Copy `.env.example` to `.env.local` when connecting a backend. Keep secrets out of the frontend bundle. The UI currently expects no environment variables, so the app runs without configuration.
 
 For a production integration, replace the `changes` collection and activity metrics in `src/App.tsx` with authenticated API queries, then keep approval actions server-side and auditable.
+Jenkins Webhook testing
